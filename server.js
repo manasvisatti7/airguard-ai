@@ -16,13 +16,22 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.json());
 
-// Serve static assets explicitly from the 'public' subfolder
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath));
+// Serve static assets from both root and public directories
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
-// Fallback route to guarantee index.html loads on Render
+// Smart route handler to serve index.html from whichever directory it exists
 app.get('/', (req, res) => {
-    res.sendFile(path.join(publicPath, 'index.html'));
+    const publicIndexPath = path.join(__dirname, 'public', 'index.html');
+    const rootIndexPath = path.join(__dirname, 'index.html');
+
+    if (fs.existsSync(publicIndexPath)) {
+        res.sendFile(publicIndexPath);
+    } else if (fs.existsSync(rootIndexPath)) {
+        res.sendFile(rootIndexPath);
+    } else {
+        res.status(404).send("AirGuard AI: index.html missing from repository.");
+    }
 });
 
 // ----------------------------------------------------------------------------
@@ -294,7 +303,6 @@ wss.on('connection', (ws) => {
     ws.on('close', () => clearInterval(interval));
 });
 
-// Use Render's environment PORT dynamically, or fallback to local port 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`=======================================================`);
