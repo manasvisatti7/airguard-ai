@@ -15,7 +15,15 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve static assets explicitly from the 'public' subfolder
+const publicPath = path.join(__dirname, 'public');
+app.use(express.static(publicPath));
+
+// Fallback route to guarantee index.html loads on Render
+app.get('/', (req, res) => {
+    res.sendFile(path.join(publicPath, 'index.html'));
+});
 
 // ----------------------------------------------------------------------------
 // 1. DYNAMIC MSME MACHINE-SPECIFIC BASELINE CONFIGURATION
@@ -38,7 +46,7 @@ let totalRuntimeSeconds = 0;
 let cumulativeWastedKWh = 0;
 let cumulativeWastedINR = 0;
 
-// CSV Telemetry Data Logging Setup
+// CSV Dataset Setup
 const csvFilePath = path.join(__dirname, 'telemetry_dataset.csv');
 if (!fs.existsSync(csvFilePath)) {
     const headers = "Timestamp,Pressure_Bar,Flow_Lmin,Temp_C,Voltage_V,Current_A,Power_kW,Runtime_sec,Moisture_pct,Humidity_pct,Data_Valid,Health_Score,Simulation_Mode\n";
@@ -93,7 +101,6 @@ function calculateEnergyFinancials(data, isLeakageDetected) {
     }
 
     const wastedINRPerHour = excessPowerKW * MSME_CONFIG.electricityTariffPerKWh;
-    
     const wastedKWhThisSecond = excessPowerKW / 3600.0;
     const wastedINRThisSecond = wastedKWhThisSecond * MSME_CONFIG.electricityTariffPerKWh;
 
@@ -113,19 +120,16 @@ function calculateEnergyFinancials(data, isLeakageDetected) {
 // 4. IN-ENGINE STATISTICAL MACHINE LEARNING (Multi-Parameter Anomaly Engine)
 // ----------------------------------------------------------------------------
 function computeNativeMLAnomalyScore(data) {
-    // Normal expected baseline centers
     const expectedPressure = (MSME_CONFIG.normalPressureMin + MSME_CONFIG.normalPressureMax) / 2.0;
     const expectedFlow = 330.0;
     const expectedTemp = 56.0;
     const expectedPower = 11.5;
 
-    // Standard deviations for normal operating noise
     const stdP = 0.3;
     const stdF = 15.0;
     const stdT = 2.0;
     const stdW = 1.0;
 
-    // Calculate Mahalanobis/Z-score normalized deviation across multi-parameters
     let zP = Math.abs(data.pressure - expectedPressure) / stdP;
     let zF = Math.abs(data.flow - expectedFlow) / stdF;
     let zT = Math.abs(data.temperature - expectedTemp) / stdT;
@@ -242,7 +246,7 @@ function generateTelemetryData() {
     const financials = calculateEnergyFinancials(rawTelemetry, analytics.isLeakage);
     const mlResult = computeNativeMLAnomalyScore(rawTelemetry);
 
-    // Append to CSV dataset
+    // Append sample to CSV dataset
     const csvRow = `${rawTelemetry.timestamp},${rawTelemetry.pressure},${rawTelemetry.flow},${rawTelemetry.temperature},${rawTelemetry.voltage},${rawTelemetry.current},${rawTelemetry.power},${rawTelemetry.runtime},${rawTelemetry.moisture},${rawTelemetry.humidity},${validation.isValid},${analytics.healthScore},${simulationMode}\n`;
     fs.appendFile(csvFilePath, csvRow, (err) => { if (err) console.error("CSV Append error", err); });
 
@@ -258,7 +262,7 @@ function generateTelemetryData() {
 }
 
 // ----------------------------------------------------------------------------
-// 7. REST API & WEBSOCKET ENGINE
+// 7. REST APIS & WEBSOCKET ENGINE
 // ----------------------------------------------------------------------------
 app.post('/api/config', (req, res) => {
     if (req.body) {
@@ -290,10 +294,10 @@ wss.on('connection', (ws) => {
     ws.on('close', () => clearInterval(interval));
 });
 
-const PORT = 3000;
+// Use Render's environment PORT dynamically, or fallback to local port 3000
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`=======================================================`);
-    console.log(` AIRGUARD AI PLATFORM RUNNING LOCAL SIMULATION`);
-    console.log(` Dashboard URL: http://localhost:${PORT}`);
+    console.log(` AIRGUARD AI PLATFORM RUNNING ON PORT ${PORT}`);
     console.log(`=======================================================`);
 });
